@@ -153,6 +153,7 @@ void starGame() {
     //memset(aliens, 0, NUM_ALIENS);
     resetTankPosition();
     score = 0;
+    ALIEN_DIRECTION = -1;
     loadAliens();
 }
 
