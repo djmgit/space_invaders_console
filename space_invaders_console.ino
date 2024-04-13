@@ -16,6 +16,10 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+#define GAME_STATE_MENU 0
+#define GAME_STATE_RUN 1
+#define GAME_STATE_SHWO_SCORE 2
+
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
@@ -84,15 +88,39 @@ const uint8_t TANK_SPEED = 2;
 const uint8_t BULLET_HEIGHT = 8;
 const uint8_t BULLET_WIDTH = 2;
 
+uint8_t GAME_STATE = GAME_STATE_MENU;
+
+const uint8_t ALIEN_BITMAP[4][8] = {
+    {0, 0, 1, 1, 1, 1, 0, 0},
+    {1, 1, 0, 1, 1, 0, 1, 1},
+    {1, 1, 1, 1, 1, 1, 1, 1},
+    {0, 0, 1, 0, 0, 1, 0, 0}};
+
+const uint8_t TANK_BITMAP[4][8] = {
+    {0, 0, 0, 1, 1, 0, 0, 0},
+    {0, 0, 0, 1, 1, 0, 0, 0},
+    {0, 1, 1, 1, 1, 1, 1, 0},
+    {1, 1, 1, 1, 1, 1, 1, 1}};
+
+const uint8_t BULLET_BITMAP[8][2] = {
+    {0, 1},
+    {1, 0},
+    {0, 1},
+    {1, 0},
+    {0, 1},
+    {1, 0},
+    {0, 1},
+    {1, 0}};
+
 const uint16_t ALIEN_BULLET_SPAWN_TIME = 1000.0;
 float alienBulletTimeRemaining = 0.0;
 
 uint8_t lives = 3;
 
 player_t tank = {
-    .posX = 0,
-    .posY = 62,
-    .width = 16,
+    .posX = SCREEN_WIDTH / 2,
+    .posY = 60,
+    .width = 8,
     .height = 2,
     .alive = 1,
     .speed = 2};
@@ -111,15 +139,20 @@ void render();
 void spawnTankBullet(uint8_t, uint8_t);
 double getDistance(uint8_t, uint8_t, uint8_t, uint8_t);
 
+void resetTankPosition()
+{
+    tank.posX = SCREEN_WIDTH / 2;
+    tank.posY = 60;
+}
+
 void spawnTankBullet(uint8_t posX, uint8_t posY)
 {
     bullet_t bullet = {
         .posX = posX,
         .posY = posY,
         .speed = 1,
-        .alive = 1
-    };
-    bulletNode_t *bNode = (bulletNode_t*)malloc(sizeof(bulletNode_t));
+        .alive = 1};
+    bulletNode_t *bNode = (bulletNode_t *)malloc(sizeof(bulletNode_t));
     bNode->bullet = bullet;
     bNode->next = NULL;
     if (tankBulletList == NULL)
@@ -128,7 +161,8 @@ void spawnTankBullet(uint8_t posX, uint8_t posY)
         return;
     }
     bulletNode_t *tHead = tankBulletList;
-    while(tHead->next != NULL) {
+    while (tHead->next != NULL)
+    {
         tHead = tHead->next;
     }
     tHead->next = bNode;
@@ -140,9 +174,8 @@ void spawnAlienBullet(uint8_t posX, uint8_t posY)
         .posX = posX,
         .posY = posY,
         .speed = 1,
-        .alive = 1
-    };
-    bulletNode_t *bNode = (bulletNode_t*)malloc(sizeof(bulletNode_t));
+        .alive = 1};
+    bulletNode_t *bNode = (bulletNode_t *)malloc(sizeof(bulletNode_t));
     bNode->bullet = bullet;
     bNode->next = NULL;
     if (alienBulletList == NULL)
@@ -151,7 +184,8 @@ void spawnAlienBullet(uint8_t posX, uint8_t posY)
         return;
     }
     bulletNode_t *tHead = alienBulletList;
-    while(tHead->next != NULL) {
+    while (tHead->next != NULL)
+    {
         tHead = tHead->next;
     }
     tHead->next = bNode;
@@ -187,54 +221,120 @@ alien_t spawnAlien(uint8_t posX, uint8_t posY, uint8_t alienType)
         .alive = 1};
 }
 
+void drawAlien(uint8_t posX, uint8_t posY)
+{
+    for (size_t row = 0; row < 4; row++)
+    {
+        for (size_t col = 0; col < 8; col++)
+        {
+            if (ALIEN_BITMAP[row][col] == 1)
+            {
+                display.drawPixel(posX + col, posY + row, SSD1306_INVERSE);
+            }
+        }
+    }
+}
+
+void drawTank(uint8_t posX, uint8_t posY)
+{
+    for (size_t row = 0; row < 4; row++)
+    {
+        for (size_t col = 0; col < 8; col++)
+        {
+            if (TANK_BITMAP[row][col] == 1)
+            {
+                display.drawPixel(posX + col, posY + row, SSD1306_INVERSE);
+            }
+        }
+    }
+}
+
+void drawBullet(uint8_t posX, uint8_t posY)
+{
+    for (size_t row = 0; row < 8; row++)
+    {
+        for (size_t col = 0; col < 2; col++)
+        {
+            if (BULLET_BITMAP[row][col] == 1)
+            {
+                display.drawPixel(posX + col, posY + row, SSD1306_INVERSE);
+            }
+        }
+    }
+}
+
+void displaySplash() {
+    display.setTextSize(2);
+    display.setTextColor(WHITE);
+    display.setCursor(40, 10);
+    display.println("SPACE");
+    display.setCursor(20, 30);
+    display.println("INVADERS");
+    display.setTextSize(1);
+    display.setCursor(40, 50);
+    display.println("Press fire");
+}
+
 void render()
 {
     display.clearDisplay();
-    for (size_t alienIndex = 0; alienIndex < 28; alienIndex++)
-    {
-        if (aliens[alienIndex].alive == 1)
+    if (GAME_STATE == GAME_STATE_RUN) {
+        for (size_t alienIndex = 0; alienIndex < 28; alienIndex++)
         {
-            display.fillRect(aliens[alienIndex].posX, aliens[alienIndex].posY, aliens[alienIndex].width, aliens[alienIndex].height, SSD1306_INVERSE);
+            if (aliens[alienIndex].alive == 1)
+            {
+                drawAlien(aliens[alienIndex].posX, aliens[alienIndex].posY);
+            }
         }
-    }
-    if (tank.alive == 1)
-    {
-        display.fillRect(tank.posX, tank.posY, tank.width, tank.height, SSD1306_INVERSE);
-    }
-    bulletNode_t *tHead = tankBulletList;
-    while (tHead != NULL) {
-        if (tHead->bullet.alive == 1) {
-            display.fillRect(tHead->bullet.posX, tHead->bullet.posY, BULLET_WIDTH, BULLET_HEIGHT, SSD1306_INVERSE);
+        if (tank.alive == 1)
+        {
+            drawTank(tank.posX, tank.posY);
         }
-        tHead = tHead->next;
-    }
+        bulletNode_t *tHead = tankBulletList;
+        while (tHead != NULL)
+        {
+            if (tHead->bullet.alive == 1)
+            {
+                drawBullet(tHead->bullet.posX, tHead->bullet.posY);
+            }
+            tHead = tHead->next;
+        }
 
-    tHead = alienBulletList;
-    while (tHead != NULL) {
-        if (tHead->bullet.alive == 1) {
-            display.fillRect(tHead->bullet.posX, tHead->bullet.posY, BULLET_WIDTH, BULLET_HEIGHT, SSD1306_INVERSE);
+        tHead = alienBulletList;
+        while (tHead != NULL)
+        {
+            if (tHead->bullet.alive == 1)
+            {
+                drawBullet(tHead->bullet.posX, tHead->bullet.posY);
+            }
+            tHead = tHead->next;
         }
-        tHead = tHead->next;
+    } else if (GAME_STATE == GAME_STATE_MENU) {
+        displaySplash();
     }
     display.display();
 }
 
-uint8_t getRandomAliveAlien() {
+uint8_t getRandomAliveAlien()
+{
     uint8_t aliveAliens[28];
     uint8_t count = 0;
-    for (size_t i = 0; i < NUM_ALIENS; i++) {
-        if (aliens[i].alive == 1) {
+    for (size_t i = 0; i < NUM_ALIENS; i++)
+    {
+        if (aliens[i].alive == 1)
+        {
             aliveAliens[count++] = i;
         }
     }
     uint8_t rAlien = rand() / (RAND_MAX / count + 1);
     return aliveAliens[rAlien];
-    
 }
 
-void cleanTankBullets() {
+void cleanTankBullets()
+{
     bulletNode_t *tHead = tankBulletList;
-    while (tHead != NULL && tHead->bullet.alive == 0) {
+    while (tHead != NULL && tHead->bullet.alive == 0)
+    {
         bulletNode_t *temp = tHead;
         tHead = tHead->next;
         free(temp);
@@ -242,9 +342,11 @@ void cleanTankBullets() {
     tankBulletList = tHead;
 
     bulletNode_t *prev = tankBulletList;
-    while(prev != NULL) {
+    while (prev != NULL)
+    {
         bulletNode_t *tHead = prev->next;
-        while(tHead != NULL && tHead->bullet.alive == 0) {
+        while (tHead != NULL && tHead->bullet.alive == 0)
+        {
             bulletNode_t *temp = tHead;
             tHead = tHead->next;
             free(temp);
@@ -254,9 +356,11 @@ void cleanTankBullets() {
     }
 }
 
-void cleanAlienBullets() {
+void cleanAlienBullets()
+{
     bulletNode_t *tHead = alienBulletList;
-    while (tHead != NULL && tHead->bullet.alive == 0) {
+    while (tHead != NULL && tHead->bullet.alive == 0)
+    {
         bulletNode_t *temp = tHead;
         tHead = tHead->next;
         free(temp);
@@ -264,9 +368,11 @@ void cleanAlienBullets() {
     alienBulletList = tHead;
 
     bulletNode_t *prev = alienBulletList;
-    while(prev != NULL) {
+    while (prev != NULL)
+    {
         bulletNode_t *tHead = prev->next;
-        while(tHead != NULL && tHead->bullet.alive == 0) {
+        while (tHead != NULL && tHead->bullet.alive == 0)
+        {
             bulletNode_t *temp = tHead;
             tHead = tHead->next;
             free(temp);
@@ -276,30 +382,53 @@ void cleanAlienBullets() {
     }
 }
 
-void update()
+void spawnRandomBullet()
 {
-    int rightVal = digitalRead(right);
-    int leftVal = digitalRead(left);
-    int fireVal = digitalRead(fire);
-    //Serial.printf("%d  %d   %d\n", leftVal, rightVal, fireVal);
-    if (rightVal == 0 && (tank.posX + tank.width < SCREEN_WIDTH))
+    alienBulletTimeRemaining -= (float)(1000 / 60);
+    if (alienBulletTimeRemaining <= 0)
     {
-        tank.posX += tank.speed;
+        alienBulletTimeRemaining = ALIEN_BULLET_SPAWN_TIME;
+        alien_t rAlien = aliens[getRandomAliveAlien()];
+        spawnAlienBullet(rAlien.posX + (ALIEN_WIDTH / 2), rAlien.posY + (ALIEN_HEIGHT / 2));
     }
-    if (leftVal == 0 && tank.posX > 0)
+}
+
+void updateTankBullets()
+{
+    bulletNode_t *tHead = tankBulletList;
+    while (tHead != NULL)
     {
-        tank.posX -= tank.speed;
-    }
-    if (fireVal == 0) {
-        if (fired == 0) {
-            spawnTankBullet(tank.posX + tank.width / 2, tank.posY - (ALIEN_HEIGHT / 2     ));
-            fired = 1;
+        if (tHead->bullet.alive == 1)
+        {
+            tHead->bullet.posY -= tHead->bullet.speed;
+            if (tHead->bullet.posY < 0 || tHead->bullet.posY > SCREEN_HEIGHT)
+            {
+                tHead->bullet.alive = 0;
+            }
         }
-    } else { 
-        fired = 0;
+        tHead = tHead->next;
     }
+}
 
+void updateAlienBullets()
+{
+    bulletNode_t *tHead = alienBulletList;
+    while (tHead != NULL)
+    {
+        if (tHead->bullet.alive == 1)
+        {
+            tHead->bullet.posY += tHead->bullet.speed;
+            if (tHead->bullet.posY + BULLET_HEIGHT > SCREEN_HEIGHT)
+            {
+                tHead->bullet.alive = 0;
+            }
+        }
+        tHead = tHead->next;
+    }
+}
 
+void updateAlienPositions()
+{
     int updateAlienDirection = 0;
 
     for (size_t alienIndex = 0; alienIndex < NUM_ALIENS; alienIndex++)
@@ -330,80 +459,111 @@ void update()
             }
         }
     }
+}
 
+void checkAlienHit()
+{
     bulletNode_t *tHead = tankBulletList;
-    while (tHead != NULL) {
-        if (tHead->bullet.alive == 1) {
-            tHead->bullet.posY -= tHead->bullet.speed;
-            if (tHead->bullet.posY < 0 || tHead->bullet.posY > SCREEN_HEIGHT) {
-                tHead->bullet.alive = 0;
-            }
-        }
-        tHead = tHead->next;
-    }
-
-    alienBulletTimeRemaining -= (float)(1000 / 60);
-    if (alienBulletTimeRemaining <= 0) {
-        alienBulletTimeRemaining = ALIEN_BULLET_SPAWN_TIME;
-        alien_t rAlien = aliens[getRandomAliveAlien()];
-        spawnAlienBullet(rAlien.posX + (ALIEN_WIDTH / 2), rAlien.posY + (ALIEN_HEIGHT / 2));
-    }
-
-    tHead = alienBulletList;
-    while (tHead != NULL) {
-        if (tHead->bullet.alive == 1) {
-            tHead->bullet.posY += tHead->bullet.speed;
-            if (tHead->bullet.posY + BULLET_HEIGHT > SCREEN_HEIGHT) {
-                tHead->bullet.alive = 0;
-            }
-        }
-        tHead = tHead->next;
-    }
-    
-
-    tHead = tankBulletList;
-    while(tHead != NULL) {
-        for(size_t i = 0; i < NUM_ALIENS; i++) {
-            if (aliens[i].alive == 0) {
+    while (tHead != NULL)
+    {
+        for (size_t i = 0; i < NUM_ALIENS; i++)
+        {
+            if (aliens[i].alive == 0)
+            {
                 continue;
             }
             double dist = getDistance(tHead->bullet.posX, tHead->bullet.posY, aliens[i].posX + (ALIEN_WIDTH / 2), aliens[i].posY + (ALIEN_HEIGHT / 2));
-            if (dist <= 4.0) {
+            if (dist <= 4.0)
+            {
                 tHead->bullet.alive = 0;
                 aliens[i].alive = 0;
             }
         }
         tHead = tHead->next;
     }
+}
 
-    tHead = alienBulletList;
-    while(tHead != NULL) {
+void checkTankHit()
+{
+    bulletNode_t *tHead = alienBulletList;
+    while (tHead != NULL)
+    {
         double dist = getDistance(tHead->bullet.posX, tHead->bullet.posY + BULLET_HEIGHT, tank.posX + (tank.width / 2), tank.posY - (tank.height / 2));
-        if (dist <= 4.0) {
+        if (dist <= 5.5)
+        {
             tHead->bullet.alive = 0;
             lives -= 1;
+            resetTankPosition();
         }
         tHead = tHead->next;
     }
-
-    cleanTankBullets();
-    cleanAlienBullets();
-    Serial.println(lives);
-
-
-
-    //tHead = tankBulletList;
-    //int count = 0;
-    //while(tHead != NULL) {
-        //count += 1;
-        //Serial.printf("%d   %d\n", tHead->bullet.posX, tHead->bullet.posY);
-        //tHead = tHead->next;
-    //}
-    //Serial.println(count);
-    
 }
 
-double getDistance(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2) {
+void processInput()
+{
+    int rightVal = digitalRead(right);
+    int leftVal = digitalRead(left);
+    int fireVal = digitalRead(fire);
+    // Serial.printf("%d  %d   %d\n", leftVal, rightVal, fireVal);
+    if (GAME_STATE == GAME_STATE_RUN) {
+        if (rightVal == 0 && (tank.posX + tank.width < SCREEN_WIDTH))
+        {
+            tank.posX += tank.speed;
+        }
+        if (leftVal == 0 && tank.posX > 0)
+        {
+            tank.posX -= tank.speed;
+        }
+        if (fireVal == 0)
+        {
+            if (fired == 0)
+            {
+                spawnTankBullet(tank.posX + (tank.width / 2) - 1, tank.posY - BULLET_HEIGHT);
+                fired = 1;
+            }
+        }
+        else
+        {
+            fired = 0;
+        }
+    } else if (GAME_STATE == GAME_STATE_MENU) {
+        if (fireVal == 0) {
+            GAME_STATE = GAME_STATE_RUN;
+        }
+    }
+}
+
+void update()
+{
+    processInput();
+
+    if (GAME_STATE == GAME_STATE_RUN) {
+        updateAlienPositions();
+        updateTankBullets();
+        spawnRandomBullet();
+        updateAlienBullets();
+        checkAlienHit();
+        checkTankHit();
+        cleanTankBullets();
+        cleanAlienBullets();
+    }
+
+    
+
+    Serial.println(lives);
+
+    // tHead = tankBulletList;
+    // int count = 0;
+    // while(tHead != NULL) {
+    // count += 1;
+    // Serial.printf("%d   %d\n", tHead->bullet.posX, tHead->bullet.posY);
+    // tHead = tHead->next;
+    //}
+    // Serial.println(count);
+}
+
+double getDistance(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2)
+{
     return (double)sqrt(pow((x2 - x1), 2.0) + pow((y2 - y1), 2.0));
 }
 
