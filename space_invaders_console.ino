@@ -18,7 +18,8 @@
 
 #define GAME_STATE_MENU 0
 #define GAME_STATE_RUN 1
-#define GAME_STATE_SHWO_SCORE 2
+#define GAME_STATE_GAME_OVER 2
+#define MAX_LIVES 3
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -115,6 +116,8 @@ const uint8_t BULLET_BITMAP[8][2] = {
 const uint16_t ALIEN_BULLET_SPAWN_TIME = 1000.0;
 float alienBulletTimeRemaining = 0.0;
 
+int score = 0;
+
 uint8_t lives = 3;
 
 player_t tank = {
@@ -143,6 +146,14 @@ void resetTankPosition()
 {
     tank.posX = SCREEN_WIDTH / 2;
     tank.posY = 60;
+}
+
+void starGame() {
+    lives = 3;
+    //memset(aliens, 0, NUM_ALIENS);
+    resetTankPosition();
+    score = 0;
+    loadAliens();
 }
 
 void spawnTankBullet(uint8_t posX, uint8_t posY)
@@ -275,6 +286,17 @@ void displaySplash() {
     display.println("Press fire");
 }
 
+void gameOver() {
+    display.setTextSize(2);
+    display.setTextColor(WHITE);
+    display.setCursor(0, 10);
+    display.println("GAME OVER!");
+    display.setTextSize(1);
+    display.setCursor(30, 30);
+    display.printf("Score: %d", score);
+
+}
+
 void render()
 {
     display.clearDisplay();
@@ -311,6 +333,8 @@ void render()
         }
     } else if (GAME_STATE == GAME_STATE_MENU) {
         displaySplash();
+    } else if (GAME_STATE == GAME_STATE_GAME_OVER) {
+        gameOver();
     }
     display.display();
 }
@@ -477,6 +501,7 @@ void checkAlienHit()
             {
                 tHead->bullet.alive = 0;
                 aliens[i].alive = 0;
+                score += 10;
             }
         }
         tHead = tHead->next;
@@ -494,6 +519,9 @@ void checkTankHit()
             tHead->bullet.alive = 0;
             lives -= 1;
             resetTankPosition();
+            if (lives == 0) {
+                GAME_STATE = GAME_STATE_GAME_OVER;
+            }
         }
         tHead = tHead->next;
     }
@@ -528,6 +556,11 @@ void processInput()
         }
     } else if (GAME_STATE == GAME_STATE_MENU) {
         if (fireVal == 0) {
+            GAME_STATE = GAME_STATE_RUN;
+        }
+    } else if (GAME_STATE == GAME_STATE_GAME_OVER) {
+        if (fireVal == 0) {
+            starGame();
             GAME_STATE = GAME_STATE_RUN;
         }
     }
@@ -589,7 +622,7 @@ void setup()
     pinMode(right, INPUT_PULLUP);
     pinMode(left, INPUT_PULLUP);
     pinMode(fire, INPUT_PULLUP);
-    loadAliens();
+    starGame();
 }
 
 void loop()
