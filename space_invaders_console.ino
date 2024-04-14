@@ -11,6 +11,10 @@
 #include <stdint.h>
 #include <time.h>
 #include <math.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -79,7 +83,7 @@ typedef struct bulletNode bulletNode_t;
 const uint8_t ALIEN_WIDTH = 8;
 const uint8_t ALIEN_HEIGHT = 4;
 const uint8_t NUM_ALIEN_ROWS = 4;
-const uint8_t ALIENT_SPEED = 1;
+uint8_t ALIEN_SPEED = 1;
 const uint8_t NUM_ALIENS = 28;
 
 const uint8_t TANK_WIDTH = 16;
@@ -118,7 +122,7 @@ float alienBulletTimeRemaining = 0.0;
 
 int score = 0;
 
-uint8_t lives = 3;
+uint8_t lives = 4;
 
 player_t tank = {
     .posX = SCREEN_WIDTH / 2,
@@ -149,16 +153,28 @@ void resetTankPosition()
 }
 
 void starGame() {
-    lives = 3;
+    lives = 4;
     //memset(aliens, 0, NUM_ALIENS);
     resetTankPosition();
     score = 0;
+    ALIEN_DIRECTION = -1;
+    ALIEN_SPEED = 1;
+    loadAliens();
+}
+
+void newWave() {
+    ALIEN_SPEED++;
     ALIEN_DIRECTION = -1;
     loadAliens();
 }
 
 void spawnTankBullet(uint8_t posX, uint8_t posY)
 {
+
+    uint8_t chance = rand() / (RAND_MAX / 10);
+    if (chance > 6) {
+        return;
+    }
     bullet_t bullet = {
         .posX = posX,
         .posY = posY,
@@ -460,8 +476,8 @@ void updateAlienPositions()
     {
         if (aliens[alienIndex].alive == 1)
         {
-            aliens[alienIndex].posX += (ALIENT_SPEED * ALIEN_DIRECTION);
-            if (aliens[alienIndex].posX == 0 || (aliens[alienIndex].posX + ALIEN_WIDTH == SCREEN_WIDTH))
+            aliens[alienIndex].posX += (ALIEN_SPEED * ALIEN_DIRECTION);
+            if (aliens[alienIndex].posX >= SCREEN_WIDTH || aliens[alienIndex].posX + ALIEN_WIDTH >= SCREEN_WIDTH)
             {
                 updateAlienDirection = 1;
             }
@@ -470,8 +486,8 @@ void updateAlienPositions()
 
     ALIEN_DIRECTION = updateAlienDirection == 1 ? ALIEN_DIRECTION * -1 : ALIEN_DIRECTION;
 
-    uint8_t moveDown = 0;
-    if (moveDown == 1)
+    uint8_t moveDown = 1;
+    if (moveDown == 1 && updateAlienDirection == 1 && ALIEN_DIRECTION == 1)
     {
         if (updateAlienDirection == 1)
         {
@@ -480,6 +496,10 @@ void updateAlienPositions()
                 if (aliens[i].alive == 1)
                 {
                     aliens[i].posY += 1;
+                    if (aliens[i].posY + ALIEN_WIDTH > tank.posY) {
+                        GAME_STATE = GAME_STATE_GAME_OVER;
+                        break;
+                    }
                 }
             }
         }
@@ -491,6 +511,7 @@ void checkAlienHit()
     bulletNode_t *tHead = tankBulletList;
     while (tHead != NULL)
     {
+        uint8_t aliveCount = 0;
         for (size_t i = 0; i < NUM_ALIENS; i++)
         {
             if (aliens[i].alive == 0)
@@ -504,6 +525,13 @@ void checkAlienHit()
                 aliens[i].alive = 0;
                 score += 10;
             }
+            if (aliens[i].alive == 1) {
+                aliveCount++;
+            }
+        }
+        if (aliveCount == 0) {
+            newWave();
+            break;
         }
         tHead = tHead->next;
     }
@@ -581,10 +609,6 @@ void update()
         cleanTankBullets();
         cleanAlienBullets();
     }
-
-    
-
-    Serial.println(lives);
 
     // tHead = tankBulletList;
     // int count = 0;
